@@ -1,66 +1,36 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "antihall"
-version = "0.1.0"
-description = "AI 幻觉检测工具库 - Detect and mitigate LLM hallucinations"
+version = "2.0.0"
+description = "中文金融报告幻觉检测工具包 — 对接 A 股真实财报验证 LLM 生成的金融数字"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.9"
-authors = [
-    {name = "antihall contributors"},
-]
-keywords = [
-    "hallucination",
-    "llm",
-    "ai",
-    "fact-checking",
-    "self-consistency",
-    "grounding",
-    "nli",
-]
+requires-python = ">=3.10"
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
+    "Natural Language :: Chinese (Simplified)",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-
 dependencies = [
-    "openai>=1.0.0",
-]
-
-[project.optional-dependencies]
-anthropic = ["anthropic>=0.18.0"]
-dev = [
-    "pytest>=7.0",
-    "pytest-cov>=4.0",
-    "ruff>=0.1.0",
-    "mypy>=1.0.0",
+    "akshare>=1.10.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-username/antihall"
-Repository = "https://github.com/your-username/antihall"
-Issues = "https://github.com/your-username/antihall/issues"
+Homepage = "https://github.com/xueshulqy770323/antihall"
+Repository = "https://github.com/xueshulqy770323/antihall"
+Issues = "https://github.com/xueshulqy770323/antihall/issues"
 
 [tool.setuptools.packages.find]
 include = ["antihall*"]
-
-[tool.ruff]
-line-length = 88
-target-version = "py39"
-
-[tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "B", "C4"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]

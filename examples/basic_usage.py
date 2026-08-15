@@ -1,38 +1,71 @@
-# -*- coding: utf-8 -*-
+"""示例 1: 基本用法 — 检测一段金融文本中的幻觉。
+
+运行前请先安装依赖：
+    pip install akshare
+
+运行：
+    python examples/basic_usage.py
 """
-antihall 基础用法示例
+from antihall import HallucinationChecker
 
-运行前请安装: pip install openai
-并设置环境变量: OPENAI_API_KEY=sk-xxx
-"""
 
-from antihall import HallucinationDetector
+def main():
+    # 一段 LLM 生成的金融分析文本（其中有些数字是编造的）
+    text = (
+        "贵州茅台2023年营收1505.6亿元，同比增长18.0%。"
+        "比亚迪2023年净利润300.4亿元，同比增长80.7%。"
+        "宁德时代2023年净利润4001.2亿元，同比增长43.6%。"  # 4001.2 是编的
+    )
 
-# 初始化检测器
-detector = HallucinationDetector(
-    api_key="sk-your-api-key",  # 或设置环境变量 OPENAI_API_KEY
-    provider="openai",
-    model="gpt-4o-mini",
-)
+    print("=" * 60)
+    print("金融报告幻觉检测")
+    print("=" * 60)
+    print(f"\n【待检测文本】\n{text}\n")
 
-# 测试文本
-text = """
-巴黎是法国的首都，位于法国北部塞纳河畔。
-巴黎面积约为105平方公里，是欧洲最大的城市之一。
-2024年夏季奥运会在巴黎举办。
-巴黎的人口超过2000万，是世界上人口最多的城市。
-"""
+    # 检测
+    checker = HallucinationChecker()
+    result = checker.check(text)
 
-# 执行检测
-result = detector.check(text)
+    # 打印摘要
+    print("【检测结果摘要】")
+    print(result.summary())
+    print(f"风险等级: {result.risk_level}\n")
 
-# 查看结果
-print(result)
-print("\n--- JSON 格式 ---")
-print(result.to_json())
+    # 逐条详情
+    print("【逐条核查详情】")
+    print("-" * 60)
+    for i, report in enumerate(result.claims, 1):
+        print(f"\n第 {i} 条: [{report.verdict.value}]")
+        print(f"  原文: {report.claim.raw_text}")
+        print(f"  公司: {report.claim.entity}")
+        print(f"  指标: {report.claim.metric}")
+        print(f"  声称值: {report.claim.value}{report.claim.unit}")
 
-# 也可以只启用部分检测器
-detector_fc_only = HallucinationDetector(
-    api_key="sk-your-api-key",
-    detectors=["fact_check"],
-)
+        if report.evidence:
+            print(f"  真实值: {report.evidence.actual_value}{report.evidence.unit}")
+            print(f"  数据源: {report.evidence.source_name}")
+            print(f"  证据链接: {report.evidence.url}")
+
+        if report.deviation is not None:
+            if report.claim.metric.startswith("同比"):
+                print(f"  偏差: {abs(report.deviation):.1f}个百分点")
+            else:
+                print(f"  偏差: {abs(report.deviation):.1%}")
+
+        if report.explanation:
+            print(f"  解释: {report.explanation}")
+        if report.suggestion:
+            print(f"  建议: {report.suggestion}")
+        print("-" * 60)
+
+    # 生成 HTML 报告
+    import os
+    report_path = os.path.join(
+        os.path.dirname(__file__), "..", "hallucination_report.html"
+    )
+    checker.check_and_report(text, report_path, "金融报告幻觉检测 — 示例")
+    print(f"\nHTML 报告已保存: {os.path.abspath(report_path)}")
+
+
+if __name__ == "__main__":
+    main()
