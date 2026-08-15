@@ -3,10 +3,10 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: 'ee59cbfd-6d5e-4f09-89ae-4a0995292a65'
-  PropagateID: 'ee59cbfd-6d5e-4f09-89ae-4a0995292a65'
-  ReservedCode1: '37bbdb9e-4fa0-4e80-95ae-00217f2ff367'
-  ReservedCode2: '37bbdb9e-4fa0-4e80-95ae-00217f2ff367'
+  ProduceID: 'd3115091-46f4-4fbf-affe-9c3049093691'
+  PropagateID: 'd3115091-46f4-4fbf-affe-9c3049093691'
+  ReservedCode1: '95b45da1-4a0e-434e-ad20-608217b3068d'
+  ReservedCode2: '95b45da1-4a0e-434e-ad20-608217b3068d'
 ---
 
 # antihall
@@ -48,7 +48,7 @@ pip install antihall
 或从源码安装:
 
 ```bash
-git clone https://github.com/your-username/antihall.git
+git clone https://github.com/xueshulqy770323/antihall.git
 cd antihall
 pip install -e .
 ```
@@ -203,7 +203,7 @@ detector = HallucinationDetector(
 
 ```bash
 # 开发环境
-git clone https://github.com/your-username/antihall.git
+git clone https://github.com/xueshulqy770323/antihall.git
 cd antihall
 pip install -e ".[dev]"
 
