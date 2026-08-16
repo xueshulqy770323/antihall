@@ -371,5 +371,3 @@ MIT License — 详见 [LICENSE](LICENSE)
 - [AKShare](https://github.com/akfamily/akshare) — 免费开源 A 股财经数据接口
 - [SelfCheckGPT](https://arxiv.org/abs/2303.08896) — 自洽性幻觉检测思路参考
 - [FacTool](https://arxiv.org/abs/2307.13528) — 事实核查思路参考
-
-> AI生成
