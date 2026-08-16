@@ -1,11 +1,33 @@
-"""HallucinationChecker — antihall 主接口。
+# -*- coding: utf-8 -*-
+"""HallucinationChecker - antihall v3 main interface.
 
-用户只需三行代码完成金融幻觉检测：
+v3.0 adds:
+- LLM-powered semantic claim extraction (optional, needs API key)
+- Semantic hallucination detection (trend reversal, temporal mismatch,
+  metric confusion, causal fabrication)
+- Unified pipeline that merges regex + LLM extraction
+
+Usage without LLM (regex-only, free, no API key):
 
     from antihall import HallucinationChecker
 
     checker = HallucinationChecker()
-    result = checker.check("贵州茅台2023年营收1505.6亿元，净利润862.3亿元。")
+    result = checker.check("...")
+    print(result.summary())
+
+Usage with LLM (full power, needs API key):
+
+    from antihall import HallucinationChecker
+    from antihall.llm.client import LLMConfig
+
+    checker = HallucinationChecker(
+        llm_config=LLMConfig(
+            api_key="sk-xxx",
+            base_url="https://api.deepseek.com/v1",
+            model="deepseek-chat",
+        )
+    )
+    result = checker.check("...")
     print(result.summary())
 """
 from __future__ import annotations
@@ -13,80 +35,54 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from antihall.models import CheckResult, ClaimReport, FinancialClaim
-from antihall.extractor.claim_extractor import ClaimExtractor
+from antihall.models import CheckResult, ClaimReport
+from antihall.pipeline import DetectionPipeline
 from antihall.datasource.akshare_source import AKShareDataSource
-from antihall.verifier.numeric_verifier import NumericVerifier
-from antihall.explainer.explainer import Explainer
+from antihall.llm.client import LLMClient, LLMConfig
 
 logger = logging.getLogger(__name__)
 
 
 class HallucinationChecker:
-    """金融报告幻觉检测器 — 主接口。
+    """Financial report hallucination checker - main interface.
 
-    工作流程：
-        原文 → [提取声明] → [查真实数据] → [数字核查] → [生成解释] → CheckResult
-
-    Attributes:
-        extractor: 声明提取器
-        datasource: 数据源（默认 AKShare）
-        verifier: 数字核查引擎
-        explainer: 解释器
+    Two modes:
+    1. Regex-only (default, no API key): numeric claim extraction + verification
+    2. Full mode (with LLM): adds semantic extraction + verification
     """
 
     def __init__(
         self,
+        llm_config: Optional[LLMConfig] = None,
         datasource: Optional[AKShareDataSource] = None,
+        use_llm: bool = True,
     ):
-        self.extractor = ClaimExtractor()
-        self.datasource = datasource or AKShareDataSource()
-        self.verifier = NumericVerifier()
-        self.explainer = Explainer()
+        llm_client = None
+        if llm_config and llm_config.api_key:
+            llm_client = LLMClient(llm_config)
+            logger.info(
+                f"LLM enabled: model={llm_config.model}, "
+                f"base_url={llm_config.base_url}"
+            )
+        else:
+            logger.info("LLM not configured, running in regex-only mode")
+
+        self.pipeline = DetectionPipeline(
+            datasource=datasource,
+            llm_client=llm_client,
+            use_llm=use_llm,
+        )
 
     def check(self, text: str) -> CheckResult:
-        """检测一段中文金融文本中的幻觉。
+        """Detect hallucinations in a Chinese financial text.
 
         Args:
-            text: 待检测文本，如 LLM 生成的财报分析、投研报告等。
+            text: Chinese financial text to check.
 
         Returns:
-            CheckResult 对象，包含每条声明的核查详情。
-
-        Examples:
-            >>> checker = HallucinationChecker()
-            >>> result = checker.check(
-            ...     "贵州茅台2023年营收1505.6亿元，净利润862.3亿元。"
-            ... )
-            >>> print(result.summary())
-            '共检测 2 条声明，其中 0 条幻觉、2 条正确...'
+            CheckResult with all claims, verdicts, explanations, evidence.
         """
-        result = CheckResult(input_text=text)
-
-        # Step 1: 提取声明
-        claims = self.extractor.extract(text)
-        logger.info(f"提取到 {len(claims)} 条声明")
-
-        # Step 2~4: 逐条 查数据→核查→解释
-        for claim in claims:
-            # 查真实数据
-            evidence = None
-            if claim.entity and claim.metric:
-                evidence = self.datasource.get_evidence(
-                    entity=claim.entity,
-                    metric=claim.metric,
-                    year=claim.year,
-                )
-
-            # 数字核查
-            report = self.verifier.verify(claim, evidence)
-
-            # 生成解释
-            report = self.explainer.explain(report)
-
-            result.claims.append(report)
-
-        return result
+        return self.pipeline.run(text)
 
     def check_and_report(
         self,
@@ -94,18 +90,23 @@ class HallucinationChecker:
         output_path: str,
         title: str = "",
     ) -> CheckResult:
-        """检测并生成 HTML 报告。
+        """Detect hallucinations and save an HTML report.
 
         Args:
-            text: 待检测文本
-            output_path: HTML 报告保存路径
-            title: 报告标题
+            text: Text to check.
+            output_path: Path to save the HTML report.
+            title: Report title.
 
         Returns:
-            CheckResult 对象
+            CheckResult (also saved as HTML).
         """
         from antihall.report.html_report import save_html_report
 
         result = self.check(text)
         save_html_report(result, output_path, title)
         return result
+
+    @property
+    def llm_enabled(self) -> bool:
+        """Whether LLM-powered detection is active."""
+        return self.pipeline.llm_extractor is not None

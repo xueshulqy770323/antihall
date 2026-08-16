@@ -1,9 +1,10 @@
-"""解释器 — 将核查结果翻译成人话。
+# -*- coding: utf-8 -*-
+"""Explainer - generates human-readable explanations for both numeric and semantic claims.
 
-针对每条声明生成：
-1. explanation: 哪句话有问题、为什么
-2. suggestion: 应该怎么改（给出正确数值）
-3. evidence_url: 可点击验证的证据链接
+For each claim report, fills in:
+1. explanation: what's wrong and why
+2. suggestion: how to fix it (with correct values)
+3. evidence URL is carried in the Evidence object
 """
 from __future__ import annotations
 
@@ -11,47 +12,50 @@ from antihall.models import (
     ClaimReport,
     Evidence,
     FinancialClaim,
+    SemanticClaim,
+    SemanticType,
     Verdict,
 )
 from antihall.extractor.claim_extractor import normalize_to_yi
 
 
 class Explainer:
-    """生成人话解释和修改建议。"""
+    """Generate human-readable explanations and correction suggestions."""
 
     def explain(self, report: ClaimReport) -> ClaimReport:
-        """为报告填充 explanation 和 suggestion 字段。"""
+        """Fill in explanation and suggestion for a report."""
         claim = report.claim
         evidence = report.evidence
 
+        # If explanation is already set (e.g. by semantic verifier), keep it
+        if report.explanation:
+            return report
+
+        if isinstance(claim, SemanticClaim):
+            return self._explain_semantic(report)
+
+        # Numeric claim explanations
         if report.verdict == Verdict.CORRECT:
             report.explanation = self._explain_correct(claim, evidence)
-            report.suggestion = ""
-
         elif report.verdict == Verdict.HALLUCINATED:
             report.explanation = self._explain_hallucinated(claim, evidence, report.deviation)
             report.suggestion = self._suggest_correction(claim, evidence)
-
         elif report.verdict == Verdict.UNVERIFIABLE:
             report.explanation = self._explain_unverifiable(claim)
-            report.suggestion = ""
-
         elif report.verdict == Verdict.ERROR:
-            report.explanation = "该声明无法解析出可验证的数值。"
-            report.suggestion = ""
+            report.explanation = "\u8be5\u58f0\u660e\u65e0\u6cd5\u89e3\u6790\u51fa\u53ef\u9a8c\u8bc1\u7684\u6570\u503c\u3002"
 
         return report
 
     # ------------------------------------------------------------------- #
-    # 各判定结果的解释
+    # Numeric claim explanations
     # ------------------------------------------------------------------- #
 
     def _explain_correct(self, claim: FinancialClaim, ev: Evidence) -> str:
-        """正确声明的解释。"""
         return (
-            f"核查通过。{claim.entity}{claim.year}年{claim.metric}"
-            f"为{ev.actual_value}{ev.unit}（数据源：{ev.source_name}），"
-            f"文本中写的是{claim.value}{claim.unit}，数值一致。"
+            f"\u6838\u67e5\u901a\u8fc7\u3002{claim.entity}{claim.year}\u5e74{claim.metric}"
+            f"\u4e3a{ev.actual_value}{ev.unit}\uff08\u6570\u636e\u6e90\uff1a{ev.source_name}\uff09\uff0c"
+            f"\u6587\u672c\u4e2d\u5199\u7684\u662f{claim.value}{claim.unit}\uff0c\u6570\u503c\u4e00\u81f4\u3002"
         )
 
     def _explain_hallucinated(
@@ -60,54 +64,70 @@ class Explainer:
         ev: Evidence,
         deviation: float,
     ) -> str:
-        """幻觉声明的解释。"""
-        # 计算偏差描述
-        if claim.metric in ("毛利率", "净利率", "资产负债率", "ROE",
-                            "同比增长率", "同比增减率"):
-            diff_desc = f"偏差{abs(deviation):.1f}个百分点"
+        if claim.metric in ("\u6bdb\u5229\u7387", "\u51c0\u5229\u7387", "\u8d44\u4ea7\u8d1f\u503a\u7387", "ROE",
+                            "\u540c\u6bd4\u589e\u957f\u7387", "\u540c\u6bd4\u589e\u51cf\u7387"):
+            diff_desc = f"\u504f\u5dee{abs(deviation):.1f}\u4e2a\u767e\u5206\u70b9"
         else:
-            diff_desc = f"偏差{abs(deviation):.1%}"
+            diff_desc = f"\u504f\u5dee{abs(deviation):.1%}"
 
-        direction = "高" if deviation > 0 else "低"
+        direction = "\u9ad8" if deviation > 0 else "\u4f4e"
 
         return (
-            f"数字幻觉。文本称{claim.entity}{claim.year}年{claim.metric}"
-            f"为{claim.value}{claim.unit}，但{ev.source_name}数据显示"
-            f"实际值为{ev.actual_value}{ev.unit}，"
-            f"文本比真实值{direction}{diff_desc}。"
+            f"\u6570\u5b57\u5e7b\u89c9\u3002\u6587\u672c\u79f0{claim.entity}{claim.year}\u5e74{claim.metric}"
+            f"\u4e3a{claim.value}{claim.unit}\uff0c\u4f46{ev.source_name}\u6570\u636e\u663e\u793a"
+            f"\u5b9e\u9645\u503c\u4e3a{ev.actual_value}{ev.unit}\uff0c"
+            f"\u6587\u672c\u6bd4\u771f\u5b9e\u503c{direction}{diff_desc}\u3002"
         )
 
     def _explain_unverifiable(self, claim: FinancialClaim) -> str:
-        """无法验证声明的解释。"""
         reasons = []
         if not claim.entity:
-            reasons.append("未识别到公司名")
+            reasons.append("\u672a\u8bc6\u522b\u5230\u516c\u53f8\u540d")
         if claim.year is None:
-            reasons.append("未识别到年份")
+            reasons.append("\u672a\u8bc6\u522b\u5230\u5e74\u4efd")
         if not reasons:
-            reasons.append("数据源中未找到该公司该年份的财报数据")
+            reasons.append("\u6570\u636e\u6e90\u4e2d\u672a\u627e\u5230\u8be5\u516c\u53f8\u8be5\u5e74\u4efd\u7684\u8d22\u62a5\u6570\u636e")
 
         return (
-            f"无法验证。原因：{'、'.join(reasons)}。"
-            f"建议人工核查{claim.entity or '该公司'}"
-            f"{claim.year or '对应年份'}的{claim.metric}数据。"
+            f"\u65e0\u6cd5\u9a8c\u8bc1\u3002\u539f\u56e0\uff1a{'\u3001'.join(reasons)}\u3002"
+            f"\u5efa\u8bae\u4eba\u5de5\u6838\u67e5{claim.entity or '\u8be5\u516c\u53f8'}"
+            f"{claim.year or '\u5bf9\u5e94\u5e74\u4efd'}\u7684{claim.metric}\u6570\u636e\u3002"
         )
 
     def _suggest_correction(self, claim: FinancialClaim, ev: Evidence) -> str:
-        """修改建议。"""
         return (
-            f"建议修改为：{claim.entity}{claim.year}年{claim.metric}"
-            f"为{ev.actual_value}{ev.unit}。"
-            f"证据来源：{ev.url}"
+            f"\u5efa\u8bae\u4fee\u6539\u4e3a\uff1a{claim.entity}{claim.year}\u5e74{claim.metric}"
+            f"\u4e3a{ev.actual_value}{ev.unit}\u3002"
+            f"\u8bc1\u636e\u6765\u6e90\uff1a{ev.url}"
         )
+
+    # ------------------------------------------------------------------- #
+    # Semantic claim explanations (fallback if verifier didn't set them)
+    # ------------------------------------------------------------------- #
+
+    def _explain_semantic(self, report: ClaimReport) -> ClaimReport:
+        """Generate fallback explanation for semantic claims if not already set."""
+        claim = report.claim  # SemanticClaim
+
+        if report.verdict == Verdict.UNVERIFIABLE and not report.explanation:
+            report.explanation = (
+                f"\u65e0\u6cd5\u9a8c\u8bc1\u8be5\u8bed\u4e49\u58f0\u660e\u3002"
+                f"\u5efa\u8bae\u4eba\u5de5\u6838\u67e5\uff1a\u201c{claim.raw_text}\u201d"
+            )
+
+        # Add evidence link to suggestion if available
+        if report.evidence and report.evidence.url and not report.suggestion:
+            report.suggestion = f"\u8bc1\u636e\u6765\u6e90\uff1a{report.evidence.url}"
+
+        return report
 
 
 # ----------------------------------------------------------------------- #
-# 全局单例
+# Global singleton
 # ----------------------------------------------------------------------- #
 _default_explainer = Explainer()
 
 
 def explain_report(report: ClaimReport) -> ClaimReport:
-    """便捷函数：解释单个报告。"""
+    """Convenience function: explain a single report."""
     return _default_explainer.explain(report)

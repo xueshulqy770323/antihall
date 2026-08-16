@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "antihall"
-version = "2.0.0"
-description = "中文金融报告幻觉检测工具包 — 对接 A 股真实财报验证 LLM 生成的金融数字"
+version = "3.0.0"
+description = "中文金融报告幻觉检测工具包 — 双引擎（正则+LLM）提取声明，数字+语义双重核查，对接 A 股真实财报验证"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -25,6 +25,15 @@ classifiers = [
 ]
 dependencies = [
     "akshare>=1.10.0",
+]
+
+[project.optional-dependencies]
+llm = [
+    "openai>=1.0.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "openai>=1.0.0",
 ]
 
 [project.urls]

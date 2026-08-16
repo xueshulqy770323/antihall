@@ -1,11 +1,30 @@
-"""antihall — 中文金融报告幻觉检测工具包。
+# -*- coding: utf-8 -*-
+"""antihall - Chinese financial report hallucination detection toolkit.
 
-检测 LLM 生成的中文金融文本中的数字幻觉，
-通过对接真实财报数据（AKShare）进行验证，
-输出可解释的检测结果（哪句有问题、为什么、怎么改）。
+v3.0: adds LLM-powered semantic detection (causal, trend, temporal, metric confusion)
+on top of the original numeric verification pipeline.
 """
 
 from antihall.core import HallucinationChecker, CheckResult, ClaimReport
+from antihall.models import (
+    FinancialClaim,
+    SemanticClaim,
+    SemanticType,
+    ClaimType,
+    Verdict,
+)
+from antihall.llm.client import LLMClient, LLMConfig
 
-__version__ = "2.0.0"
-__all__ = ["HallucinationChecker", "CheckResult", "ClaimReport"]
+__version__ = "3.0.0"
+__all__ = [
+    "HallucinationChecker",
+    "CheckResult",
+    "ClaimReport",
+    "FinancialClaim",
+    "SemanticClaim",
+    "SemanticType",
+    "ClaimType",
+    "Verdict",
+    "LLMClient",
+    "LLMConfig",
+]

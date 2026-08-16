@@ -11,7 +11,7 @@ from __future__ import annotations
 import html
 from typing import Optional
 
-from antihall.models import CheckResult, ClaimReport, Verdict
+from antihall.models import CheckResult, ClaimReport, Verdict, FinancialClaim, SemanticClaim, SemanticType
 
 
 # 颜色方案
@@ -23,10 +23,17 @@ _COLORS = {
 }
 
 _LABELS = {
-    Verdict.HALLUCINATED: "幻觉",
-    Verdict.CORRECT: "正确",
-    Verdict.UNVERIFIABLE: "无法验证",
-    Verdict.ERROR: "错误",
+    Verdict.HALLUCINATED: "\u5e7b\u89c9",  # 幻觉
+    Verdict.CORRECT: "\u6b63\u786e",    # 正确
+    Verdict.UNVERIFIABLE: "\u65e0\u6cd5\u9a8c\u8bc1",  # 无法验证
+    Verdict.ERROR: "\u9519\u8bef",      # 错误
+}
+
+_SEM_TYPE_LABELS = {
+    SemanticType.CAUSAL: "\u56e0\u679c\u7f16\u9020",        # 因果编造
+    SemanticType.TREND_REVERSAL: "\u8d8b\u52bf\u98a0\u5012",    # 趋势颠倒
+    SemanticType.TEMPORAL_MISMATCH: "\u65f6\u95f4\u9519\u4f4d",  # 时间错位
+    SemanticType.METRIC_CONFUSION: "\u6307\u6807\u6df7\u6dc6",    # 指标混淆
 }
 
 
@@ -230,7 +237,7 @@ def _highlight_text(result: CheckResult) -> str:
 
 
 def _render_claim_card(index: int, report: ClaimReport) -> str:
-    """渲染单条声明的详情卡片。"""
+    """Render a single claim's detail card (supports numeric + semantic)."""
     claim = report.claim
     ev = report.evidence
     v = report.verdict
@@ -250,64 +257,142 @@ def _render_claim_card(index: int, report: ClaimReport) -> str:
 
     card_cls = cls_map.get(v, "unverifiable")
     badge_cls = badge_cls_map.get(v, "badge-unverifiable")
-    label = _LABELS.get(v, "未知")
+    label = _LABELS.get(v, "\u672a\u77e5")  # 未知
 
     parts: list[str] = []
     parts.append(f'<div class="claim-card {card_cls}">')
 
-    # 头部
+    # Header: badge + claim type label
     parts.append('<div class="claim-header">')
     parts.append(f'<span class="badge {badge_cls}">{label}</span>')
-    parts.append(f'<span style="color:#888;font-size:14px;">第 {index} 条</span>')
+    # Semantic type badge (extra)
+    if isinstance(claim, SemanticClaim):
+        sem_label = _SEM_TYPE_LABELS.get(claim.semantic_type, "")
+        if sem_label:
+            parts.append(
+                f'<span class="badge" style="background:#722ed1;">{html.escape(sem_label)}</span>'
+            )
+    parts.append(f'<span style="color:#888;font-size:14px;">\u7b2c {index} \u6761</span>')
     parts.append("</div>")
 
-    # 原文
+    # Original text
     parts.append(
-        f'<div class="claim-raw">"{html.escape(claim.raw_text)}"</div>'
+        f'<div class="claim-raw">\"{html.escape(claim.raw_text)}\"</div>'
     )
 
-    # 详情
-    parts.append(f'<div class="detail-row"><span class="key">公司</span>'
-                 f'<span class="val">{html.escape(claim.entity or "未识别")}</span></div>')
-    parts.append(f'<div class="detail-row"><span class="key">指标</span>'
-                 f'<span class="val">{html.escape(claim.metric)}</span></div>')
-    parts.append(f'<div class="detail-row"><span class="key">声称值</span>'
-                 f'<span class="val">{claim.value}{claim.unit}</span></div>')
+    # Detail rows — different for numeric vs semantic
+    if isinstance(claim, SemanticClaim):
+        parts.extend(_render_semantic_details(claim, report, ev))
+    else:
+        parts.extend(_render_numeric_details(claim, report, ev))
 
-    if ev and ev.actual_value is not None:
-        parts.append(f'<div class="detail-row"><span class="key">真实值</span>'
-                     f'<span class="val">{ev.actual_value}{ev.unit}</span></div>')
-
-    if report.deviation is not None:
-        if claim.metric in ("毛利率", "净利率", "资产负债率", "ROE",
-                            "同比增长率", "同比增减率"):
-            dev_str = f"{abs(report.deviation):.1f}个百分点"
-        else:
-            dev_str = f"{abs(report.deviation):.1%}"
-        parts.append(f'<div class="detail-row"><span class="key">偏差</span>'
-                     f'<span class="val">{dev_str}</span></div>')
-
+    # Explanation (shared)
     if report.explanation:
         parts.append(f'<div class="detail-row" style="margin-top:12px;">'
-                     f'<span class="key">解释</span>'
+                     f'<span class="key">\u89e3\u91ca</span>'
                      f'<span class="val">{html.escape(report.explanation)}</span></div>')
 
-    # 证据链接
+    # Evidence link
     if ev and ev.url:
         parts.append(
             f'<a class="evidence-link" href="{ev.url}" target="_blank">'
-            f"查看证据来源 →</a>"
+            f"\u67e5\u770b\u8bc1\u636e\u6765\u6e90 \u2192</a>"
         )
 
-    # 修改建议
+    # Trend data (for semantic trend claims)
+    if ev and ev.trend_data:
+        trend_str = " \u2192 ".join(
+            f"{d['year']}\uff1a{d['value']}" for d in ev.trend_data
+        )
+        parts.append(
+            f'<div class="detail-row" style="margin-top:8px;">'
+            f'<span class="key">\u5386\u5e74\u6570\u636e</span>'
+            f'<span class="val">{html.escape(trend_str)}</span></div>'
+        )
+
+    # Suggestion
     if report.suggestion:
         parts.append('<div class="suggestion-box">')
-        parts.append('<div class="title">修改建议</div>')
+        parts.append('<div class="title">\u4fee\u6539\u5efa\u8bae</div>')
         parts.append(html.escape(report.suggestion))
         parts.append("</div>")
 
     parts.append("</div>")  # claim-card
     return "\n".join(parts)
+
+
+def _render_numeric_details(claim, report, ev) -> list[str]:
+    """Render detail rows for a numeric (FinancialClaim) claim."""
+    parts: list[str] = []
+    parts.append(f'<div class="detail-row"><span class="key">\u516c\u53f8</span>'
+                 f'<span class="val">{html.escape(claim.entity or "\u672a\u8bc6\u522b")}</span></div>')
+    parts.append(f'<div class="detail-row"><span class="key">\u6307\u6807</span>'
+                 f'<span class="val">{html.escape(claim.metric)}</span></div>')
+    parts.append(f'<div class="detail-row"><span class="key">\u58f0\u79f0\u503c</span>'
+                 f'<span class="val">{claim.value}{claim.unit}</span></div>')
+
+    if ev and ev.actual_value is not None:
+        parts.append(f'<div class="detail-row"><span class="key">\u771f\u5b9e\u503c</span>'
+                     f'<span class="val">{ev.actual_value}{ev.unit}</span></div>')
+
+    if report.deviation is not None:
+        if claim.metric in ("\u6bdb\u5229\u7387", "\u51c0\u5229\u7387", "\u8d44\u4ea7\u8d1f\u503a\u7387", "ROE",
+                            "\u540c\u6bd4\u589e\u957f\u7387", "\u540c\u6bd4\u589e\u51cf\u7387"):
+            dev_str = f"{abs(report.deviation):.1f}\u4e2a\u767e\u5206\u70b9"
+        else:
+            dev_str = f"{abs(report.deviation):.1%}"
+        parts.append(f'<div class="detail-row"><span class="key">\u504f\u5dee</span>'
+                     f'<span class="val">{dev_str}</span></div>')
+    return parts
+
+
+def _render_semantic_details(claim, report, ev) -> list[str]:
+    """Render detail rows for a semantic (SemanticClaim) claim."""
+    parts: list[str] = []
+    parts.append(f'<div class="detail-row"><span class="key">\u516c\u53f8</span>'
+                 f'<span class="val">{html.escape(claim.entity or "\u672a\u8bc6\u522b")}</span></div>')
+    parts.append(f'<div class="detail-row"><span class="key">\u58f0\u660e</span>'
+                 f'<span class="val">{html.escape(claim.claim_text or claim.raw_text)}</span></div>')
+
+    # Type-specific details
+    if claim.semantic_type == SemanticType.CAUSAL:
+        if claim.claimed_cause:
+            parts.append(f'<div class="detail-row"><span class="key">\u58f0\u79f0\u539f\u56e0</span>'
+                         f'<span class="val">{html.escape(claim.claimed_cause)}</span></div>')
+        if claim.claimed_effect:
+            parts.append(f'<div class="detail-row"><span class="key">\u58f0\u79f0\u7ed3\u679c</span>'
+                         f'<span class="val">{html.escape(claim.claimed_effect)}</span></div>')
+
+    elif claim.semantic_type == SemanticType.TREND_REVERSAL:
+        if claim.claimed_direction:
+            parts.append(f'<div class="detail-row"><span class="key">\u58f0\u79f0\u8d8b\u52bf</span>'
+                         f'<span class="val">{html.escape(claim.claimed_direction)}</span></div>')
+        if claim.claimed_period:
+            parts.append(f'<div class="detail-row"><span class="key">\u58f0\u79f0\u65f6\u671f</span>'
+                         f'<span class="val">{html.escape(claim.claimed_period)}</span></div>')
+
+    elif claim.semantic_type == SemanticType.TEMPORAL_MISMATCH:
+        if claim.claimed_year:
+            parts.append(f'<div class="detail-row"><span class="key">\u58f0\u79f0\u5e74\u4efd</span>'
+                         f'<span class="val">{claim.claimed_year}</span></div>')
+        if claim.actual_year_data:
+            parts.append(f'<div class="detail-row"><span class="key">\u5b9e\u9645\u5e74\u4efd</span>'
+                         f'<span class="val">{claim.actual_year_data}</span></div>')
+
+    elif claim.semantic_type == SemanticType.METRIC_CONFUSION:
+        if claim.claimed_metric:
+            parts.append(f'<div class="detail-row"><span class="key">\u58f0\u79f0\u6307\u6807</span>'
+                         f'<span class="val">{html.escape(claim.claimed_metric)}</span></div>')
+        if claim.actual_metric:
+            parts.append(f'<div class="detail-row"><span class="key">\u5b9e\u9645\u6307\u6807</span>'
+                         f'<span class="val">{html.escape(claim.actual_metric)}</span></div>')
+
+    # Evidence value if available
+    if ev and ev.actual_value is not None:
+        parts.append(f'<div class="detail-row"><span class="key">\u771f\u5b9e\u6570\u636e</span>'
+                     f'<span class="val">{ev.actual_value}{ev.unit}</span></div>')
+
+    return parts
 
 
 def save_html_report(result: CheckResult, filepath: str, title: str = "") -> str:
